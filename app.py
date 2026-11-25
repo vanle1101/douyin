@@ -172,7 +172,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.serve_file(file)
             file=DIST/('index.html' if path=='/' else path.lstrip('/'))
             if not file.resolve().is_relative_to(DIST.resolve()) or not file.is_file():return self.fail('Không tìm thấy',404)
-            data=file.read_bytes();self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(file.name)[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+            data=file.read_bytes();self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(file.name)[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(data)
         except Exception as e: self.fail(e,500)
     def serve_file(self,file):
         size=file.stat().st_size;start=0;end=size-1;header=self.headers.get('Range','')

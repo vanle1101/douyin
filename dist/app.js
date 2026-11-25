@@ -10,7 +10,7 @@ const fmtDate=n=>n?new Date(n*1000).toLocaleString('vi-VN'):'—';
 const dur=n=>{if(!Number.isFinite(n))return '—';let s=Math.max(0,Math.round(n));return `${Math.floor(s/3600)?Math.floor(s/3600)+'g ':''}${Math.floor(s%3600/60)}p ${s%60}g`};
 const labels={running:'ĐANG CHẠY',queued:'CHỜ XỬ LÝ',blocked:'BỊ CHẶN',stopped:'ĐÃ DỪNG',completed:'HOÀN THÀNH'};
 function toast(msg,error=false){let el=$('#toast');el.textContent=msg;el.className=(error?'error ':'')+'show';setTimeout(()=>el.className='',3800)}
-function updateCreateButton(){ $('#create-button').disabled=!engineOnline||uploadBusy||(inputMode==='file'&&!selectedVideoFile) }
+function updateCreateButton(){ $('#create-button').disabled=!engineOnline||uploadBusy||(inputMode==='file'&&!selectedVideoFile);fileInput.disabled=uploadBusy;fileDrop.classList.toggle('busy',uploadBusy) }
 function fileError(message){let el=$('#file-error');el.textContent=message;el.hidden=!message}
 function chooseVideoFile(file){
   selectedVideoFile=null;
@@ -26,10 +26,10 @@ function chooseVideoFile(file){
 }
 const fileInput=$('#video-file'), fileDrop=$('.file-drop');
 fileInput.addEventListener('click',()=>{fileInput.value=''});
-fileInput.addEventListener('change',()=>chooseVideoFile(fileInput.files[0]));
+fileInput.addEventListener('change',()=>{if(uploadBusy)return;chooseVideoFile(fileInput.files[0])});
 for(const type of ['dragenter','dragover'])fileDrop.addEventListener(type,e=>{e.preventDefault();fileDrop.classList.add('dragging')});
 fileDrop.addEventListener('dragleave',e=>{if(!fileDrop.contains(e.relatedTarget))fileDrop.classList.remove('dragging')});
-fileDrop.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();fileDrop.classList.remove('dragging');let files=e.dataTransfer?.files;if(files?.length!==1){chooseVideoFile(null);fileError('Hãy thả đúng một file video.');return}chooseVideoFile(files[0])});
+fileDrop.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();fileDrop.classList.remove('dragging');if(uploadBusy)return;let files=e.dataTransfer?.files;if(files?.length!==1){chooseVideoFile(null);fileError('Hãy thả đúng một file video.');return}chooseVideoFile(files[0])});
 document.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault()});
 document.addEventListener('drop',e=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault()});
 async function api(path,method='GET',data){let res=await fetch(apiUrl(path),{method,headers:{...(method!=='GET'?{'X-Local-Action':'1','Content-Type':'application/json'}:{})},body:data===undefined?undefined:JSON.stringify(data)});let value=await res.json();if(!res.ok)throw new Error(value.error||'Có lỗi xảy ra');return value}
