@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101828">
+  <title>Douyin Studio · Public</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="Douyin Studio Public">
+        <span class="brand-mark">D</span>
+        <span><b>Douyin Studio</b><small>VIDEO STUDIO</small></span>
+      </a>
+      <div class="public-chip"><span class="pulse"></span> Trình xử lý công khai</div>
+    </header>
+
+    <section class="intro">
+      <div>
+        <p class="eyebrow">XỬ LÝ VIDEO TRÊN MÁY HÀ NỘI</p>
+        <h1>Thử tạo phụ đề<br>và video tiếng Việt</h1>
+        <p class="intro-copy">Tải video từ thiết bị của bạn lên để chạy pipeline thực. Không cần cài ứng dụng hay tạo tài khoản.</p>
+      </div>
+      <aside class="limits-card">
+        <div class="limit-head"><span class="limit-icon">◷</span><b>Giới hạn hiện tại của máy</b></div>
+        <ul>
+          <li><span>Thời lượng video</span><strong id="limit-duration">30 giây – 2 giờ</strong></li>
+          <li><span>Dung lượng file tối đa hiện tại</span><strong id="limit-upload">Đang đo</strong></li>
+          <li><span>Thời gian xử lý mỗi job</span><strong id="limit-runtime">Tối đa 6 giờ</strong></li>
+          <li><span>Dung lượng đĩa còn trống</span><strong id="limit-disk">Đang đo</strong></li>
+          <li><span>Lưu output</span><strong id="limit-output">Giữ đến khi bạn xóa</strong></li>
+        </ul>
+      </aside>
+    </section>
+
+    <section class="status-strip" aria-live="polite">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="engine-status">Đang kiểm tra engine…</span>
+      <span class="status-spacer"></span>
+      <span id="resource-summary" class="resource-summary">Đang đọc tài nguyên</span>
+    </section>
+
+    <section class="notice" id="notice" hidden></section>
+
+    <section class="workspace">
+      <div class="panel upload-panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">BẮT ĐẦU</p><h2>Tải video lên</h2></div>
+          <span class="step-badge">01</span>
+        </div>
+        <label class="dropzone" id="dropzone" for="video-file">
+          <span class="upload-icon" aria-hidden="true">↑</span>
+          <strong id="file-title">Chọn file video</strong>
+          <span id="file-subtitle">MP4, MOV, MKV hoặc WEBM · tối đa theo đĩa trống hiện tại</span>
+          <input id="video-file" type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,.mp4,.mov,.mkv,.webm">
+        </label>
+        <div class="upload-progress" id="upload-progress" hidden>
+          <div class="progress-copy"><span id="upload-label">Đang tải lên</span><b id="upload-percent">0%</b></div>
+          <div class="progress-track"><span id="upload-bar"></span></div>
+        </div>
+        <button class="primary-button" id="create-button" type="button" disabled>Tạo job <span>→</span></button>
+        <p class="privacy-note"><span>◈</span> Job được gắn với phiên trình duyệt riêng. Người khác không xem được log hoặc output của bạn.</p>
+        <p class="link-note" id="source-help">Upload dùng chunk và có thể tiếp tục sau khi chọn lại cùng file. Mỗi video được ffprobe kiểm tra trước khi vào hàng chờ.</p>
+      </div>
+
+      <div class="panel job-panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">TIẾN ĐỘ</p><h2 id="job-heading">Chưa có job</h2></div>
+          <span class="step-badge">02</span>
+        </div>
+        <div class="empty-job" id="empty-job">
+          <span class="empty-mark">✳</span>
+          <b>Job của bạn sẽ hiển thị tại đây</b>
+          <span>Chọn video ở bên trái để bắt đầu.</span>
+        </div>
+        <div id="job-content" hidden>
+          <div class="job-meta"><span id="job-status" class="job-status">Đang chờ</span><span id="job-duration"></span></div>
+          <div class="progress-copy"><span id="stage-copy">Đang chờ job</span><b id="job-percent">0%</b></div>
+          <div class="progress-track job-progress"><span id="job-bar"></span></div>
+          <div class="stage-list" id="stage-list"></div>
+          <p class="job-error" id="job-error" hidden></p>
+          <button class="cancel-button" id="cancel-job" type="button" hidden>Hủy job</button>
+          <div class="output-actions" id="output-actions" hidden>
+            <a class="download-button" id="download-mp4" href="#">Tải MP4</a>
+            <a class="download-button secondary-download" id="download-srt" href="#">Tải phụ đề SRT</a>
+          </div>
+          <p class="link-note" id="mp4-delivery-note" hidden>Cloudflare Quick Tunnel không phải đường phân phối MP4 được chấp thuận; MP4 của phiên vẫn được giữ riêng trên máy xử lý cho tới khi có kênh tải phù hợp.</p>
+          <button class="cancel-button" id="delete-job" type="button" hidden>Xóa job và giải phóng dung lượng của tôi</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel preview-panel" id="preview-panel" hidden>
+      <div class="panel-heading">
+        <div><p class="eyebrow">KẾT QUẢ</p><h2>Video và phụ đề</h2></div>
+        <span class="step-badge">03</span>
+      </div>
+      <p class="link-note" id="video-delivery-note" hidden>Video MP4 được giữ riêng theo phiên; Quick Tunnel hiện không thể chuyển file này tới trình duyệt.</p>
+      <div class="preview-grid">
+        <div class="video-wrap" id="video-wrap"></div>
+        <div class="transcript-wrap">
+          <h3>Phụ đề tiếng Việt</h3>
+          <div class="transcript-list" id="transcript-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel log-panel" id="log-panel" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">NHẬT KÝ ĐÃ LỌC</p><h2>Tiến trình xử lý</h2></div></div>
+      <ol class="event-list" id="event-list"></ol>
+    </section>
+
+    <footer>
+      <span>Xử lý trực tiếp trên máy chủ riêng · một job chạy đồng thời</span>
+      <span>Không nhập thông tin đăng nhập Douyin hoặc dữ liệu riêng tư.</span>
+    </footer>
+  </main>
+</body>
+</html>

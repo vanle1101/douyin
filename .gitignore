@@ -1,0 +1,39 @@
+# Runtime data, jobs, uploads, and private settings
+/data/
+/public-demo-data/
+/public-demo-verification/
+/remote-access.json
+/public-demo-url.txt
+
+# Environments, caches, logs, and databases
+/.public-demo-env/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.log
+*.sqlite
+*.sqlite3
+*.db
+.env
+.env.*
+
+# Local backups and rollback snapshots
+/backup-*/
+/rollback-remote-access-*/
+
+# Media, model weights, cookies, and generated outputs
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.srt
+*.vtt
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.cookie
+*.cookies
+cookies*.txt
