@@ -20,6 +20,7 @@ __pycache__/
 # Local backups and rollback snapshots
 /backup-*/
 /rollback-remote-access-*/
+/rollback-continuation-code.ps1
 
 # Media, model weights, cookies, and generated outputs
 *.mp4
