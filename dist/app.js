@@ -4,11 +4,34 @@ const apiUrl=path=>API_ROOT+path;
 const STAGES=['download','audio','transcribe','translate','subtitles','tts','timing','render'];
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let state={jobs:[],runs:[],config:{},health:{},checklist:[],stages:{}}, selected=null, reviewing=null, inputMode='link', currentView='overview', first=true;
+let selectedVideoFile=null, engineOnline=false, uploadBusy=false;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDate=n=>n?new Date(n*1000).toLocaleString('vi-VN'):'—';
 const dur=n=>{if(!Number.isFinite(n))return '—';let s=Math.max(0,Math.round(n));return `${Math.floor(s/3600)?Math.floor(s/3600)+'g ':''}${Math.floor(s%3600/60)}p ${s%60}g`};
 const labels={running:'ĐANG CHẠY',queued:'CHỜ XỬ LÝ',blocked:'BỊ CHẶN',stopped:'ĐÃ DỪNG',completed:'HOÀN THÀNH'};
 function toast(msg,error=false){let el=$('#toast');el.textContent=msg;el.className=(error?'error ':'')+'show';setTimeout(()=>el.className='',3800)}
+function updateCreateButton(){ $('#create-button').disabled=!engineOnline||uploadBusy||(inputMode==='file'&&!selectedVideoFile) }
+function fileError(message){let el=$('#file-error');el.textContent=message;el.hidden=!message}
+function chooseVideoFile(file){
+  selectedVideoFile=null;
+  $('#selected-file').hidden=true;
+  fileError('');
+  if(!file){updateCreateButton();return}
+  if(!/\.(mp4|mov|mkv|webm)$/i.test(file.name)){fileError('Chỉ nhận MP4, MOV, MKV hoặc WEBM.');updateCreateButton();return}
+  if(file.size<=0){fileError('File video trống hoặc không đọc được.');updateCreateButton();return}
+  selectedVideoFile=file;
+  $('#selected-file').textContent=`Đã chọn: ${file.name} · ${(file.size/1048576).toFixed(1)} MiB`;
+  $('#selected-file').hidden=false;
+  updateCreateButton();
+}
+const fileInput=$('#video-file'), fileDrop=$('.file-drop');
+fileInput.addEventListener('click',()=>{fileInput.value=''});
+fileInput.addEventListener('change',()=>chooseVideoFile(fileInput.files[0]));
+for(const type of ['dragenter','dragover'])fileDrop.addEventListener(type,e=>{e.preventDefault();fileDrop.classList.add('dragging')});
+fileDrop.addEventListener('dragleave',e=>{if(!fileDrop.contains(e.relatedTarget))fileDrop.classList.remove('dragging')});
+fileDrop.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();fileDrop.classList.remove('dragging');let files=e.dataTransfer?.files;if(files?.length!==1){chooseVideoFile(null);fileError('Hãy thả đúng một file video.');return}chooseVideoFile(files[0])});
+document.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault()});
+document.addEventListener('drop',e=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault()});
 async function api(path,method='GET',data){let res=await fetch(apiUrl(path),{method,headers:{...(method!=='GET'?{'X-Local-Action':'1','Content-Type':'application/json'}:{})},body:data===undefined?undefined:JSON.stringify(data)});let value=await res.json();if(!res.ok)throw new Error(value.error||'Có lỗi xảy ra');return value}
 const job=id=>state.jobs.find(j=>j.id===id);
 function go(view){currentView=view;$$('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+view));$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===view));$('#current-view').textContent={overview:'Tổng quan',queue:'Hàng đợi',review:'Phụ đề & preview',history:'Lịch sử phiên',settings:'Cấu hình'}[view];if(view==='review')renderReview();if(view==='history')renderHistory()}
@@ -34,12 +57,53 @@ try{let rows=await api(`/api/jobs/${j.id}/segments`);$('#transcript-list').inner
 function renderHistory(){let runs=state.runs, opts='<option value="">Chọn phiên</option>'+runs.map(r=>`<option value="${r.id}">${esc(job(r.job_id)?.title||r.job_id)} · ${fmtDate(r.started_at)}</option>`).join('');let a=$('#compare-a').value,b=$('#compare-b').value;$('#compare-a').innerHTML=opts;$('#compare-b').innerHTML=opts;$('#compare-a').value=a||runs[0]?.id||'';$('#compare-b').value=b||runs[1]?.id||'';$('#runs-list').innerHTML=runs.map(r=>`<div class="run-row"><b>${esc(job(r.job_id)?.title||r.job_id)}</b><span class="status ${esc(r.status)}" style="float:right">${labels[r.status]||esc(r.status)}</span><p>${fmtDate(r.started_at)} · ${dur((r.finished_at||Date.now()/1000)-r.started_at)} · ${Object.keys(r.stages||{}).length} bước chạy trong phiên</p>${r.output_path?`<a href="${apiUrl('/api/runs/'+r.id+'/output')}" download="output_${r.id}.mp4">Tải video phiên này</a> · <a href="${apiUrl('/api/runs/'+r.id+'/subtitles')}" download="subtitles_${r.id}.srt">Tải phụ đề</a>`:''}</div>`).join('')||'<p class="muted">Chưa có phiên xử lý nào.</p>';compare()}
 function compare(){let a=state.runs.find(r=>r.id===$('#compare-a').value),b=state.runs.find(r=>r.id===$('#compare-b').value);if(!a||!b){$('#comparison').innerHTML='<p class="muted">Chọn hai phiên để so sánh.</p>';return}let rows=[['Kết quả',labels[a.status],labels[b.status]],['Thời gian phiên',dur((a.finished_at||Date.now()/1000)-a.started_at),dur((b.finished_at||Date.now()/1000)-b.started_at)],['Model nhận diện',a.config.recognition_model,b.config.recognition_model],['Model dịch',a.config.translation_model,b.config.translation_model],['Giọng đọc',a.config.voice_path||'—',b.config.voice_path||'—'],['Mã hóa',`${a.config.encode_preset} / CRF ${a.config.crf}`,`${b.config.encode_preset} / CRF ${b.config.crf}`],...STAGES.map(s=>[state.stages[s],a.stages?.[s]===undefined?'—':dur(a.stages[s]),b.stages?.[s]===undefined?'—':dur(b.stages[s])])];$('#comparison').innerHTML=`<table class="compare-table"><thead><tr><th>CHỈ SỐ</th><th>PHIÊN A</th><th>PHIÊN B</th></tr></thead><tbody>${rows.map(row=>`<tr>${row.map(cell=>`<td>${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
 function updateProfileFields(){let auto=$('#config-form').elements.profile_mode.value==='auto';for(let name of ['vram_floor_mib','min_free_ram_mib','cpu_threads','parallel_cpu','chunk_seconds'])$('#config-form').elements[name].disabled=auto}function configForm(){let form=$('#config-form');Object.entries(state.config).forEach(([k,v])=>{let input=form.elements.namedItem(k);if(input)input.value=Array.isArray(v)?JSON.stringify(v):v});updateProfileFields()}$('#config-form').elements.profile_mode.addEventListener('change',updateProfileFields);
-async function refresh(){try{let next=await api('/api/state');let previous=state;state=next;$('#model-list').innerHTML=(next.health.translation_models||[]).map(m=>`<option value="${esc(m.name)}">${m.size_mib} MiB trên máy</option>`).join('');$('#node-state').textContent='Đã kết nối · '+(next.jobs.filter(j=>j.status==='running').length?'đang xử lý':'sẵn sàng');$('#node-dot').classList.remove('off');$('#engine-pill').textContent='● ENGINE ONLINE';$('#engine-pill').classList.remove('offline');$('#engine-warning').hidden=true;$('#create-button').disabled=false;renderOverview();if(currentView==='queue')renderQueue();if(currentView==='history'&&previous.runs?.length!==next.runs.length)renderHistory();if(first){first=false;configForm();renderQueue();renderHistory()}}catch(e){$('#node-state').textContent='Không kết nối được';$('#node-dot').classList.add('off');$('#engine-pill').textContent='● ENGINE OFFLINE';$('#engine-pill').classList.add('offline');$('#engine-warning').hidden=false;$('#create-button').disabled=true;if(first){first=false;renderQueue();renderHistory();$('#current-job').innerHTML='<div class="empty-state"><b>Đang chờ engine trên máy bạn</b>Giải nén bản cục bộ trên Windows, chạy <code>py -3 app.py</code>. Link này là giao diện; việc dịch video diễn ra trên máy của bạn.</div>';$('#health-panel').innerHTML='<p class="muted">Chưa đọc được ffmpeg, GPU hoặc model vì engine trên máy chưa kết nối.</p>';$('#evidence').innerHTML='<div class="evidence-card blocker"><b>BLOCKER</b><p>Máy chủ Site không có model hoặc quyền truy cập máy cá nhân. Khởi chạy engine local để bắt đầu.</p></div>'}}}
+async function refresh(){try{let next=await api('/api/state');let previous=state;state=next;$('#model-list').innerHTML=(next.health.translation_models||[]).map(m=>`<option value="${esc(m.name)}">${m.size_mib} MiB trên máy</option>`).join('');$('#node-state').textContent='Đã kết nối · '+(next.jobs.filter(j=>j.status==='running').length?'đang xử lý':'sẵn sàng');$('#node-dot').classList.remove('off');$('#engine-pill').textContent='● ENGINE ONLINE';$('#engine-pill').classList.remove('offline');$('#engine-warning').hidden=true;engineOnline=true;updateCreateButton();renderOverview();if(currentView==='queue')renderQueue();if(currentView==='history'&&previous.runs?.length!==next.runs.length)renderHistory();if(first){first=false;configForm();renderQueue();renderHistory()}}catch(e){$('#node-state').textContent='Không kết nối được';$('#node-dot').classList.add('off');$('#engine-pill').textContent='● ENGINE OFFLINE';$('#engine-pill').classList.add('offline');$('#engine-warning').hidden=false;engineOnline=false;updateCreateButton();if(first){first=false;renderQueue();renderHistory();$('#current-job').innerHTML='<div class="empty-state"><b>Đang chờ engine trên máy bạn</b>Giải nén bản cục bộ trên Windows, chạy <code>py -3 app.py</code>. Link này là giao diện; việc dịch video diễn ra trên máy của bạn.</div>';$('#health-panel').innerHTML='<p class="muted">Chưa đọc được ffmpeg, GPU hoặc model vì engine trên máy chưa kết nối.</p>';$('#evidence').innerHTML='<div class="evidence-card blocker"><b>BLOCKER</b><p>Máy chủ Site không có model hoặc quyền truy cập máy cá nhân. Khởi chạy engine local để bắt đầu.</p></div>'}}}
 async function action(id,act,data={}){try{await api(`/api/jobs/${id}/${act}`,'POST',data);toast(act==='stop'?'Đang dừng sau thao tác hiện tại':act==='resume'?'Đã đưa lại vào hàng đợi':'Đã cập nhật');await refresh();return true}catch(e){toast(e.message,true);return false}}
-document.addEventListener('click',async e=>{let target=e.target.closest('button,[data-select]');if(!target)return;let d=target.dataset;if(d.view)go(d.view);if(d.go)go(d.go);if(d.select){selected=d.select;lastDetail='';renderQueue()}if(d.open){selected=d.open;lastDetail='';go('queue');renderQueue()}if(d.review){reviewing=d.review;$('#transcript-list').dataset.job='';go('review')}if(d.action)action(d.id,d.action);if(d.rerun){if(confirm(`Chạy lại từ bước “${state.stages[d.rerun]}”? Các bước sau đó sẽ được thực hiện lại.`))action(d.id,'rerun',{stage:d.rerun})}if(d.move){e.stopPropagation();action(d.id,'move',{delta:Number(d.move)})}if(d.input){inputMode=d.input;$$('[data-input]').forEach(x=>x.classList.toggle('selected',x.dataset.input===inputMode));$('#link-input').hidden=inputMode!=='link';$('#file-input').hidden=inputMode!=='file'}if(d.removeCheck!==undefined){state.checklist.splice(+d.removeCheck,1);saveChecklist()}if(target.id==='add-check'){state.checklist.push({text:'Kiểm tra video và phụ đề',done:false});saveChecklist()}if(target.id==='refresh-health'||target.id==='retry-engine')refresh();if(target.id==='save-notes')action(d.id,'notes',{notes:$('#job-notes').value})});
+document.addEventListener('click',async e=>{let target=e.target.closest('button,[data-select]');if(!target)return;let d=target.dataset;if(d.view)go(d.view);if(d.go)go(d.go);if(d.select){selected=d.select;lastDetail='';renderQueue()}if(d.open){selected=d.open;lastDetail='';go('queue');renderQueue()}if(d.review){reviewing=d.review;$('#transcript-list').dataset.job='';go('review')}if(d.action)action(d.id,d.action);if(d.rerun){if(confirm(`Chạy lại từ bước “${state.stages[d.rerun]}”? Các bước sau đó sẽ được thực hiện lại.`))action(d.id,'rerun',{stage:d.rerun})}if(d.move){e.stopPropagation();action(d.id,'move',{delta:Number(d.move)})}if(d.input){inputMode=d.input;$$('[data-input]').forEach(x=>x.classList.toggle('selected',x.dataset.input===inputMode));$('#link-input').hidden=inputMode!=='link';$('#file-input').hidden=inputMode!=='file';updateCreateButton()}if(d.removeCheck!==undefined){state.checklist.splice(+d.removeCheck,1);saveChecklist()}if(target.id==='add-check'){state.checklist.push({text:'Kiểm tra video và phụ đề',done:false});saveChecklist()}if(target.id==='refresh-health'||target.id==='retry-engine')refresh();if(target.id==='save-notes')action(d.id,'notes',{notes:$('#job-notes').value})});
 document.addEventListener('change',e=>{if(e.target.dataset.check!==undefined){state.checklist[+e.target.dataset.check].done=e.target.checked;saveChecklist()}if(e.target.dataset.checkText!==undefined){state.checklist[+e.target.dataset.checkText].text=e.target.value;saveChecklist()}});
 $('#review-select').addEventListener('change',e=>{reviewing=e.target.value;$('#transcript-list').dataset.job='';renderReview()});$('#compare-a').addEventListener('change',compare);$('#compare-b').addEventListener('change',compare);
 $('#save-segments').addEventListener('click',async()=>{let j=job(reviewing);if(!j)return;let rows=$$('.segment').map(x=>({target:x.querySelector('textarea').value,start:Number(x.querySelectorAll('input')[0].value),end:Number(x.querySelectorAll('input')[1].value)}));if(await action(j.id,'segments',{rows})){ $('#transcript-list').dataset.job='';await renderReview()}});
 $('#config-form').addEventListener('submit',async e=>{e.preventDefault();let cfg=Object.fromEntries(new FormData(e.target));try{let result=await api('/api/config','POST',cfg);state.config=result.config;state.health=result.health;configForm();$('#settings-result').textContent='Đã lưu. Job mới sẽ dùng cấu hình này.';toast('Đã lưu cấu hình');renderOverview()}catch(err){toast(err.message,true)}});
-$('#create-form').addEventListener('submit',async e=>{e.preventDefault();let button=$('#create-button');button.disabled=true;try{let payload={title:$('#job-title').value.trim()};if(inputMode==='link'){payload.url=$('#video-url').value.trim();if(!payload.url)throw Error('Hãy nhập liên kết video')}else{let file=$('#video-file').files[0];if(!file)throw Error('Hãy chọn file video');let start=await api('/api/upload/start','POST',{name:file.name,size:file.size});let chunkSize=4*1024*1024;$('#upload-progress').hidden=false;for(let off=0;off<file.size;off+=chunkSize){let blob=file.slice(off,off+chunkSize);let res=await fetch(apiUrl('/api/upload/'+start.token),{method:'POST',headers:{'X-Local-Action':'1','X-Offset':String(off)},body:blob});let result=await res.json();if(!res.ok)throw Error(result.error);$('#upload-progress').textContent=`Đang sao chép: ${Math.round(result.received/file.size*100)}%`}payload.upload=start.token}let j=await api('/api/jobs','POST',payload);selected=j.id;$('#job-title').value='';$('#video-url').value='';$('#video-file').value='';$('#upload-progress').hidden=true;lastDetail='';toast('Đã thêm vào hàng đợi');await refresh()}catch(err){toast(err.message,true)}finally{button.disabled=false}});
+$('#create-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(uploadBusy)return;
+  uploadBusy=true;
+  updateCreateButton();
+  const progress=$('#upload-progress');
+  try{
+    let payload={title:$('#job-title').value.trim()};
+    if(inputMode==='link'){
+      payload.url=$('#video-url').value.trim();
+      if(!payload.url)throw Error('Hãy nhập liên kết video');
+    }else{
+      let file=selectedVideoFile;
+      if(!file)throw Error('Hãy chọn file video');
+      fileError('');
+      let start=await api('/api/upload/start','POST',{name:file.name,size:file.size});
+      const chunkSize=4*1024*1024;
+      progress.hidden=false;
+      for(let off=0;off<file.size;off+=chunkSize){
+        let blob=file.slice(off,off+chunkSize);
+        let res=await fetch(apiUrl('/api/upload/'+start.token),{method:'POST',headers:{'X-Local-Action':'1','X-Offset':String(off)},body:blob});
+        let result=await res.json();
+        if(!res.ok)throw Error(result.error||'Không upload được chunk video');
+        progress.textContent=`Đang sao chép: ${Math.round(result.received/file.size*100)}%`;
+      }
+      payload.upload=start.token;
+    }
+    let j=await api('/api/jobs','POST',payload);
+    selected=j.id;
+    $('#job-title').value='';
+    $('#video-url').value='';
+    fileInput.value='';
+    chooseVideoFile(null);
+    progress.hidden=true;
+    lastDetail='';
+    toast('Đã thêm vào hàng đợi');
+    await refresh();
+  }catch(err){
+    if(inputMode==='file')fileError(err.message||'Không tải được video');
+    toast(err.message||'Có lỗi xảy ra',true);
+  }finally{uploadBusy=false;updateCreateButton()}
+});
 $('#clock').textContent=new Date().toLocaleString('vi-VN',{dateStyle:'medium',timeStyle:'short'});refresh();setInterval(refresh,3500);
